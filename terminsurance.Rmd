@@ -5,3 +5,420 @@ date: "5/6/2018"
 output: pdf_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Term Life Insurance  
+
+The purpose of this project is to build a predictive model that is able to predict who is likely to purchase term life insurance. As a part of this research, exploratory analysis was done to highlight predictors that may be associated with the purchase of term insurance, and to derive other predictors that may reveal key characteristics of those who purchase term insurance.
+
+## Data Exploration 
+
+In this section, the goal will be to explore the dataset provided by the Society of Actuaries to recognize if there are any trends or areas of interests in regards to the variables present. This section focuses on getting a stronger grasp on how the data was collected and more importantly what the data is trying to tell us. 
+
+Packages used 
+```{r, echo = FALSE}
+# Libraries
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r, echo = FALSE}
+# Read in data
+termlife <- read.csv("TermLife1.csv")
+```
+
+
+```{r, include = FALSE}
+# Subset Dataset, Delete Variables 
+
+# ethnicity factor-levels unclear -> toss this variable 
+# borrowcvlifepol factor-levels unclear -> toss this variable 
+# netvalue factor-levels unclear -> toss this variable 
+
+termlf <- subset(termlife, select = -c(ETHNICITY, NETVALUE, BORROWCVLIFEPOL))
+
+# Create agediff variable - only for those with spouse 
+termlf$AGEDIFF <- ifelse(termlf$MARSTAT==0, NA, termlf$AGE - termlf$SAGE)
+
+# Create edudiff variable - only for those with spouse 
+termlf$EDUDIFF <- ifelse(termlf$MARSTAT==0, NA, termlf$EDUCATION - termlf$SEDUCATION)
+
+# Set missing spouse ages to NA
+termlf$SAGE[termlf$SAGE == 0] <- NA
+
+# Set missing seducation values to NA
+termlf$SEDUCATION[termlf$MARSTAT==0] <- NA
+
+# based on education differences and age differences between interviewer and spouse, maybe possible to assume most responders were male
+
+str(termlf)
+#termlf$EDUDIFF <- termlf$EDUCATION - termlf$SEDUCATION
+attach(termlf)
+#continuous variables 
+termlife_cont <- data.frame(AGE, EDUCATION, SAGE, AGEDIFF, SEDUCATION, NUMHH, INCOME, TOTINCOME, CHARITY,
+                            FACE, FACECVLIFEPOLICIES, CASHCVLIFEPOLICIES)
+```
+
+## Summary Output 
+Here the continuous variables are summarised, showcasing median, mean, and other summary statistics 
+
+```{r}
+summary(termlife_cont)
+apply(termlife_cont, 2, var)
+```
+
+## Check Unique Factor-Levels of Covariates
+```{r, warning = FALSE, message = FALSE, echo=FALSE}
+catvar <- c("GENDER", "SGENDER", "MARSTAT", "SMARSTAT", "EDUCATION", "SEDUCATION", "EDUDIFF", "NUMHH", "Term_Flag") 
+termlife_cat <- termlf[catvar]
+termlife_cat <-termlife_cat %>% mutate_each_(funs(factor(.)), catvar) #change into categorical variables
+str(termlife_cat)
+```
+
+## Variable Correlation Assessments 
+
+### Pearson Correlation Statistics 
+
+Next, lets look at correlation coefficients between variables.
+```{r}
+# Calculate variable correlation values with a few different approaches to measuring correlation
+termlf %>% select_at(vars(AGE,EDUCATION,FACE,INCOME,TOTINCOME,NUMHH,CHARITY,AGEDIFF,Term_Flag)) %>% 
+  cor(method = "pearson")
+```
+We can see AGEDIFF and NUMHH possess a moderate negative correlation. This could make sense, as partners with a larger age difference would probably be more likely to have less children. 
+
+### Transformation + Pairs Graph Correlation Assessment 
+
+First we look at a scatterplot matrix illustrating possible correlations between some important variables. Then, we will again view the scatterplot with some variables log-transformed. 
+
+The logarithmic transformations merited investigation because upon observing the initial scatterplot matrix, there appeared to be some exponential trends that would benefit from a logarithmic transformation. 
+Specifically, the variables face value and income showcased strong linear trends after being transformed. Other variables (age and education) were transformed to simply see what else the data may tell us.  
+
+```{r, echo = FALSE}
+log_income <- log(INCOME)
+log_age <- log(AGE)
+log_education <- log(EDUCATION)
+log_face <- log(INCOME)
+pairs(~AGE + FACE + EDUCATION + INCOME, data = termlf)
+```
+
+```{r, echo = FALSE}
+pairs(~log_age + log_face + log_education + log_income)
+```
+
+### Graphs of Variable Relationships 
+
+Several bar graphs to see what we can gather from face value, education, and income using age difference in the x-axis 
+```{r}
+termlf %>% ggplot(aes(x = AGEDIFF, y = FACE)) + geom_bar(stat = "identity")
+termlf %>% ggplot(aes(x = AGEDIFF, y = EDUCATION)) + geom_bar(stat = "identity")
+termlf %>% ggplot(aes(x = AGEDIFF, y = INCOME)) + geom_bar(stat = "identity")
+```
+
+Now seeing what are some possible graphs that can be gather from education plotted against face value. See that as education increases so does the likelihood to spend a higher amount on face value 
+```{r}
+termlf %>% ggplot(aes(x = EDUCATION, y = FACE)) + geom_bar(stat = "identity")
+```
+
+## Boxplots
+
+Boxplots between age, age difference, and education against the response variable term_flag 
+
+#### Age vs Term_Flag
+```{r, warning = FALSE, echo = FALSE}
+termlf$Term_Flag <- factor(Term_Flag, levels = c(0, 1), labels = c("No", "Yes"))
+age <- ggplot(termlf, aes(x = Term_Flag, y = AGE, fill = Term_Flag)) + geom_boxplot()
+age
+```
+
+#### Age Difference vs Term_Flag
+```{r, warning = FALSE, echo = FALSE}
+AGEDIFFs <- ggplot(termlf, aes(x = Term_Flag, y = AGEDIFF, fill = Term_Flag)) + geom_boxplot()
+AGEDIFFs
+```
+
+#### Education vs Term_Flag
+```{r, warning = FALSE, echo = FALSE}
+edu <- ggplot(termlf, aes(x = Term_Flag, y = EDUCATION, fill = Term_Flag)) + geom_boxplot()
+edu
+```
+
+#### Number of Household Members vs Term_Flag
+```{r, warning = FALSE, echo = FALSE}
+numh <- ggplot(termlf, aes(x = Term_Flag, y = NUMHH, fill = Term_Flag)) + geom_boxplot()
+numh
+```
+
+## Histograms 
+
+Histograms of continuous variables to observe the distribution closely.
+
+```{r, echo = FALSE}
+# AGE Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = AGE,y = ..density..),binwidth = 2,na.rm = T) +
+  geom_density(mapping = aes(x = AGE, y = ..density..), col="red") +
+  labs(title = "Histogram of AGE")
+
+# SAGE Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = SAGE,y = ..density..),binwidth = 3,na.rm = T) +
+  geom_density(mapping = aes(x = SAGE, y = ..density..), col="red") +
+  labs(title = "Histogram of SAGE")
+
+# EDUCATION Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = EDUCATION,y = ..density..),binwidth = 2,na.rm = T) +
+  geom_density(mapping = aes(x = EDUCATION, y = ..density..), col="red") +
+  labs(title = "Histogram of EDUCATION")
+
+# SEDUCATION Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = SEDUCATION,y = ..density..),binwidth = 2,na.rm = T) +
+  geom_density(mapping = aes(x = SEDUCATION, y = ..density..), col="red") +
+  labs(title = "Histogram of SEDUCATION")
+
+# NUMHH Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = NUMHH,y = ..density..),binwidth = 1,na.rm = T) +
+  geom_density(mapping = aes(x = NUMHH, y = ..density..), col="red") +
+  labs(title = "Histogram of NUMHH")
+
+# INCOME Density Histogram 
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = INCOME, y = ..density..)) +
+  geom_density(mapping = aes(x = INCOME, y = ..density..), col = "red")
+
+# TOTINCOME Density Histogram 
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = TOTINCOME, y = ..density..)) +
+  geom_density(mapping = aes(x = TOTINCOME, y = ..density..), col = "red")
+
+# CHARITY Density Histogram 
+#ggplot(termlf) +
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = CHARITY, y = ..density..)) +
+  geom_density(mapping = aes(x = CHARITY, y = ..density..), col = "red")
+
+# FACE Density Histogram 
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = FACE, y = ..density..)) +
+  geom_density(mapping = aes(x = FACE, y = ..density..), col = "red")
+
+# FACECVLIFEPOLICIES Density Histogram 
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = FACECVLIFEPOLICIES, y = ..density..)) +
+  geom_density(mapping = aes(x = FACECVLIFEPOLICIES, y = ..density..), col = "red")
+
+# CASHCVLIFEPOLICIES Density Histogram 
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = CASHCVLIFEPOLICIES, y = ..density..)) +
+  geom_density(mapping = aes(x = CASHCVLIFEPOLICIES, y = ..density..), col = "red")
+```
+
+```{r, echo = FALSE}
+# agediff Density Histogram 
+#ggplot(termlf) + 
+  #geom_histogram(mapping = aes(x = FACE, y = ..density..)) +
+  #geom_density(mapping = aes(x = FACE, y = ..density..), col = "red")
+# agediff Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = AGEDIFF,y = ..density..),binwidth = 4,na.rm = T) +
+  geom_density(mapping = aes(x = AGEDIFF, y = ..density..), col="red") +
+  labs(title = "Histogram of AGEDIFF")
+
+# edudiff Density Histogram 
+#ggplot(termlf) +
+  #geom_histogram(mapping = aes(x = EDUDIFF,y = ..density..)) +
+  #geom_density(mapping = aes(x = EDUDIFF, y = ..density..), col = "red")
+# edudiff Density Histogram 
+ggplot(termlf) +
+  geom_histogram(mapping = aes(x = EDUDIFF,y = ..density..),binwidth = 1,na.rm = T) +
+  geom_density(mapping = aes(x = EDUDIFF, y = ..density..), col="red") +
+  labs(title = "Histogram of EDUDIFF")
+```
+
+### Zoomed into histograms
+
+Set x-axis limit to obtain interpretable density.
+```{r, echo = FALSE}
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = INCOME, y = ..density..)) +
+  geom_density(mapping = aes(x = INCOME, y = ..density..), col = "red") + 
+  xlim(0, 150000)
+
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = TOTINCOME, y = ..density..)) +
+  geom_density(mapping = aes(x = TOTINCOME, y = ..density..), col = "red") + 
+  xlim(0, 100000) + ylim(0, 1e-5)
+
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = CHARITY, y = ..density..)) +
+  geom_density(mapping = aes(x = CHARITY, y = ..density..), col = "red") + 
+  xlim(0, 50000) + ylim(0, 3e-5)
+
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = FACE, y = ..density..)) +
+  geom_density(mapping = aes(x = FACE, y = ..density..), col = "red") +
+  xlim(0, 50000)
+
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = FACE, y = ..density..)) +
+  geom_density(mapping = aes(x = FACE, y = ..density..), col = "red") +
+  xlim(0, 50000)
+
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = FACECVLIFEPOLICIES, y = ..density..)) +
+  geom_density(mapping = aes(x = FACECVLIFEPOLICIES, y = ..density..), col = "red") +
+  xlim(0, 100000) + ylim(0, 0.00005)
+
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = CASHCVLIFEPOLICIES, y = ..density..)) +
+  geom_density(mapping = aes(x = CASHCVLIFEPOLICIES, y = ..density..), col = "red") +
+  xlim(0, 10000)
+ 
+ggplot(termlf) + 
+  geom_histogram(mapping = aes(x = FACE, y = ..density..)) +
+  geom_density(mapping = aes(x = FACE, y = ..density..), col = "red") +
+  xlim(0, 100000) + ylim(0, 0.00005)
+```
+
+### Cutoffs
+Decided to truncate variables FACE and CHARITY at these amounts due to outliers that interfered with analysis 
+```{r, warning = FALSE, message = FALSE, echo = FALSE}
+FACE[FACE >= 200000] <- 200000
+CHARITY[CHARITY >= 100000] <- 100000
+```
+
+
+## Term Flag Visualizations
+
+### Graphs Illustrating Relationships of Term_Flag (variable indicating purchase) and Other Variables
+
+Below are bar graphs created to observe individuals within the categorical variables who purchased term insurance. 
+Trends to pay attention to: Individuals with the highest education make up the bulk of the dataset who purchased the term insurance.
+
+
+```{r, echo = FALSE}
+# Subset Dataset, Delete Variables 
+
+# ethnicity factor-levels unclear -> toss this variable 
+# borrowcvlifepol factor-levels unclear -> toss this variable 
+# netvalue factor-levels unclear -> toss this variable 
+
+termlf <- subset(termlife, select = -c(ETHNICITY, NETVALUE, BORROWCVLIFEPOL))
+
+# Create AGEDIFF variable 
+termlf$AGEDIFF <- termlf$AGE - termlf$SAGE 
+
+# based on education differences and age differences between interviewer and spouse, maybe possible to assume most responders were male
+
+#str(termlf)
+termlf$EDUDIFF <- termlf$EDUCATION - termlf$SEDUCATION
+
+#continuous variables 
+termlife_cont <- data.frame(AGE, EDUCATION, SAGE, AGEDIFF, SEDUCATION, NUMHH, INCOME, TOTINCOME, CHARITY,
+                            FACE, FACECVLIFEPOLICIES, CASHCVLIFEPOLICIES)
+yes_cat <- termlife_cat[which(termlf$Term_Flag == 1),]
+EDU_yes <- data.frame(table(yes_cat$EDUCATION))
+colnames(EDU_yes) <- c("Education", "Freq")
+ggplot(EDU_yes, aes(x=Education, y=Freq, fill=Education))+ geom_bar(width = 1, stat = "identity")
+```
+
+Married respondents make up the bulk of purchasers related to term insurance. 
+
+```{r, echo = FALSE}
+marstat_yes <- data.frame(table(yes_cat$MARSTAT))
+colnames(marstat_yes) <- c("Marital_Status", "Freq")
+ggplot(marstat_yes, aes(x = Marital_Status, y = Freq, fill = Marital_Status)) + geom_bar(width = 1, stat = "identity")
+```
+
+Clear that married people (1) make up the bulk of term-life insurance purchasers. 
+
+```{r, echo = FALSE}
+gender_cat <- data.frame(table(yes_cat$GENDER))
+colnames(gender_cat) <- c("Gender", "Freq")
+ggplot(gender_cat, aes(x = Gender, y = Freq, fill = Gender)) + geom_bar(width = 1, stat = "identity")
+```
+
+1 is male in gender, so noticeable that males make up the bulk of term life insurance purchasers.
+
+```{r, echo = FALSE}
+numhh_yes <- data.frame(table(yes_cat$NUMHH))
+colnames(numhh_yes) <- c("Number_of_Household_Members", "Freq")
+ggplot(numhh_yes, aes(x =Number_of_Household_Members, y = Freq), fill = Number_of_Household_Members) + geom_bar(width = 1, stat = "identity")
+```
+
+Those with 2 as a number of household members make up most of the term life insurance purchasers. 
+
+
+## Data Preparation 
+
+Variables AGEDIFF and EDUDIFF were created to recognize age and education difference, as these were possible avenues of interest 
+```{r}
+# Subset Dataset, Delete Variables 
+
+# ethnicity factor-levels unclear -> toss this variable 
+# borrowcvlifepol factor-levels unclear -> toss this variable 
+# netvalue factor-levels unclear -> toss this variable 
+
+termlf <- subset(termlife, select = -c(ETHNICITY, NETVALUE, BORROWCVLIFEPOL))
+
+# Create agediff variable - only for those with spouse 
+termlf$AGEDIFF <- ifelse(termlf$MARSTAT==0, NA, termlf$AGE - termlf$SAGE)
+
+# Create edudiff variable - only for those with spouse 
+termlf$EDUDIFF <- ifelse(termlf$MARSTAT==0, NA, termlf$EDUCATION - termlf$SEDUCATION)
+
+# Set missing spouse ages to NA
+termlf$SAGE[termlf$SAGE == 0] <- NA
+
+# Set missing seducation values to NA
+termlf$SEDUCATION[termlf$MARSTAT==0] <- NA
+
+# based on education differences and age differences between responder and spouse, 
+# maybe possible to assume most responders were male
+
+# Data Frame Preview 
+str(termlf)
+
+#continuous variables 
+termlife_cont <- data.frame(AGE, EDUCATION, SAGE, AGEDIFF, SEDUCATION, NUMHH, INCOME, TOTINCOME, CHARITY,
+                            FACE, FACECVLIFEPOLICIES, CASHCVLIFEPOLICIES)
+```
+
+
+# Appendix 
+```{r, eval = FALSE, echo = TRUE}
+# plyr must be loaded before dplyr if they are to be used together properly 
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+
+#extra data preparation 
+termlf %>% ggplot(aes(x = AGEDIFF, y = FACE)) + geom_bar(stat = "identity")
+termlf %>% ggplot(aes(x = AGEDIFF, y = EDUCATION)) + geom_bar(stat = "identity")
+termlf %>% ggplot(aes(x = AGEDIFF, y = INCOME)) + geom_bar(stat = "identity")
+
+### Factor-Level Counts For Categorical Variables
+
+Counting the occurrences of these categorical variables 
+```{r}
+# Counting # Occurences (categorical)
+count(termlf, vars = GENDER)
+count(termlf, vars = SGENDER)
+count(termlf, vars = MARSTAT)
+count(termlf, vars = SMARSTAT)
+count(termlf, vars = Term_Flag)
+
+# Counting # Occurences (numerical)
+count(termlf, vars = NUMHH)
+count(termlf, vars = EDUCATION)
+count(termlf, vars = SEDUCATION)
+```
+```
